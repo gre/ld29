@@ -12,7 +12,8 @@
     "url": "https://github.com/user/project.git"
   },
   "dependencies": {
-    "Phaser": "https://github.com/gre/phaser/tarball/v2.0.3"
+    "Phaser": "https://github.com/gre/phaser/tarball/v2.0.3",
+    "lodash": "2.4.1"
   },
   "devDependencies": {
     "grunt": "~0.4.1",
