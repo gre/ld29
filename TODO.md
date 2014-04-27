@@ -50,14 +50,14 @@ structure:
  - gallery
 
 rooms:
-  - food stock
   - nursery (for larva)
   - incubator (for eggs)
   - solar incubator
   - royal room
   - aphids shed
-  - meat loft
-  - grain loft
+  - food stock
+    - meat loft
+    - grain loft
   - hibernation room
 
 ant work:

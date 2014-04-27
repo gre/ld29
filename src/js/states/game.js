@@ -180,9 +180,14 @@ Game.prototype = {
         var y = yi * tileSize;
         i = this.gridIndex(xi, yi);
         if (y > 0) {
-          tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
-          tile.inputEnabled = true;
-          this.bindDirt(tile, xi, yi, i);
+          if (Math.random() < 0.005) {
+            tile = this.ground.create(x, y, "rock");
+          }
+          else {
+            tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
+            tile.inputEnabled = true;
+            this.bindDirt(tile, xi, yi, i);
+          }
         }
         this.groundGrid[i] = tile;
       }
@@ -314,6 +319,7 @@ Game.prototype = {
   },
 
   addTask: function (type, x, y) {
+    // FIXME: also add a sprite with it, which will hold the "progress" status
     var task = this.findTask(function (task) {
       return task.x === x && task.y === y && task.type === type;
     });

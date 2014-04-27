@@ -26,6 +26,7 @@ Preloader.prototype = {
     this.load.spritesheet('ant', 'assets/img/ant.png', 16, 16, 2);
     this.load.image('empty_ground', 'assets/img/empty_ground.png');
     this.load.image('task', 'assets/img/task.png');
+    this.load.image('rock', 'assets/img/rock.png');
     this.load.image('game_bg', 'assets/img/game_bg.png');
     this.load.spritesheet('dirt', 'assets/img/dirt.png', 16, 16, 10);
     this.load.image('titlepage', 'assets/img/title.png');
