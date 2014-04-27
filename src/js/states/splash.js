@@ -2,8 +2,6 @@
 'use strict';
 var Phaser = require('Phaser');
 
-var DURATION = 2000;
-
 var Splash = function (game) {
   this.logo = null;
 };
@@ -27,7 +25,7 @@ Splash.prototype = {
     }, this);
 
     tween
-      .to({ alpha: 0 }, DURATION, Phaser.Easing.Linear.None)
+      .to({ alpha: 0 }, 3000, Phaser.Easing.Linear.None)
       .start();
   }
 

@@ -457,16 +457,16 @@ Game.prototype = {
 
     this.bornArea = _.filter([
       [0, 6],
+      [-1, 6],
+      [1, 6],
       [-1, 5],
       [0, 5],
-      [1, 5],
-      [-1, 6],
-      [1, 6]
+      [1, 5]
     ], function (p, i) {
       var x = p[0], y = p[1];
       this.groundSprite(x, y).kill();
       tile = this.ground.create(x*tileSize, y*tileSize, "royal_room");
-      if (i === 0) {
+      if (i <= 2) {
         this.queen = this.createAnt(x, y, i===0 ? "queen" : null);
       }
       return i > 0;
@@ -481,6 +481,8 @@ Game.prototype = {
     this.camera.focusOnXY(0, 0);
 
     this.syncWorkersJobCount();
+
+    console.log(this.tasks);
   },
 
   syncWorkersJobCount: function () {
@@ -547,8 +549,7 @@ Game.prototype = {
     if (this.outOfGrid(x, y)) return false;
     if (y < 0) return false;
     if (y === 0) return true;
-    var i = this.groundIndex(x, y);
-    var tile = this.groundGrid[i];
+    var tile = this.groundSprite(x, y);
     if (!tile) return true;
     if (tile.key === "rock" || tile.key === "dirt") return false;
     return true;
@@ -658,8 +659,11 @@ Game.prototype = {
   bindDirt: function (tile, xi, yi, i) {
     tile.events.onKilled.add(function () {
       delete this.groundGrid[i];
+      /*
+      // THIS cause bugs, no time to investigate for this minor feature
       var dirt = this.objects.create(tile.x, tile.y, "dirt_pile");
       this.addTask(dirt, "cleanDirt", xi, yi, true);
+      */
     }, this);
     this.onTileSelected(tile, function (sprite, e) {
       if (currentPencilMode === "dig") {
