@@ -341,8 +341,6 @@ Game.prototype = {
       "ui"
     );
 
-    
-
     function jobHandler (id, incr) {
       return function () {
         if (incr > 0 && jobs.worker <= 0) return;
@@ -374,8 +372,10 @@ Game.prototype = {
       var textw = 80;
       var x = this.game.width - textw - 20;
       var y = 20 + i * 40;
-      this.ui.add(new Phaser.Button(this.game, x-5, y-8-5, 'arrows', jobHandler(id, 1), this, 0, 2, 4, 6));
-      this.ui.add(new Phaser.Button(this.game, x-5, y+18-5, 'arrows', jobHandler(id, -1), this, 1, 3, 5, 7));
+      if (id !== "worker") {
+        this.ui.add(new Phaser.Button(this.game, x-5, y-8-5, 'arrows', jobHandler(id, 1), this, 0, 2, 4, 6));
+        this.ui.add(new Phaser.Button(this.game, x-5, y+18-5, 'arrows', jobHandler(id, -1), this, 1, 3, 5, 7));
+      }
       var text = new Phaser.Text(this.game, x+20, y, job, { align: 'right', font: '12pt bold Arial', wordWrapWidth: textw, wordWrap: true });
       this.ui.add(text);
       var count = new Phaser.Text(this.game, x+3, y+4, "0", { font: '9pt bold monospace' });
@@ -415,6 +415,15 @@ Game.prototype = {
       this.world,
       "ants"
     );
+
+    this.uiInline = new Phaser.Group(
+      this.game,
+      this.world,
+      "ui-inline"
+    );
+
+    this.cursor = this.uiInline.create(0, 0, "cursor");
+    this.cursor.visible = false;
     
     for (var xi = this.minGridX; xi < this.maxGridX; xi++) {
       for (var yi = this.minGridY; yi < this.maxGridY; yi++) {
@@ -617,8 +626,14 @@ Game.prototype = {
   },
 
   onTileSelected: function (tile, f, ctx) {
+    var cursor = this.cursor;
     tile.inputEnabled = true;
     function handler (sprite, e) {
+      if (cursor) {
+        cursor.visible = true;
+        cursor.x = sprite.x;
+        cursor.y = sprite.y;
+      }
       if (e.isDown) {
         return f.apply(ctx, arguments);
       }

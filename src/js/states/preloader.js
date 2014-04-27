@@ -29,6 +29,7 @@ Preloader.prototype = {
     this.load.image('task', 'assets/img/task.png');
     this.load.image('rock', 'assets/img/rock.png');
     this.load.image('aphid', 'assets/img/aphid.png');
+    this.load.image('cursor', 'assets/img/cursor.png');
     this.load.image('royal_room', 'assets/img/royal_room.png');
     this.load.image('food_stock', 'assets/img/food_stock.png');
     this.load.image('grain', 'assets/img/grain.png');
