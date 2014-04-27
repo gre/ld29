@@ -490,8 +490,6 @@ Game.prototype = {
     this.camera.focusOnXY(0, 0);
 
     this.syncWorkersJobCount();
-
-    console.log(this.tasks);
   },
 
   syncWorkersJobCount: function () {
@@ -521,7 +519,7 @@ Game.prototype = {
       }
       if (i === 50) return;
     }
-    var tile = this.objects.create(x*tileSize, y*tileSize, "mushroom");
+    var tile = this.objects.create(x*tileSize, y*tileSize, "mushroom", this.rnd.integerInRange(0, 4));
     this.bindMushroom(tile, x, y);
     this.lastMushroom = this.time.time;
     return tile;

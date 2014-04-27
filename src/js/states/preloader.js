@@ -33,7 +33,7 @@ Preloader.prototype = {
     this.load.image('royal_room', 'assets/img/royal_room.png');
     this.load.image('food_stock', 'assets/img/food_stock.png');
     this.load.image('grain', 'assets/img/grain.png');
-    this.load.image('mushroom', 'assets/img/mushroom.png');
+    this.load.spritesheet('mushroom', 'assets/img/mushroom.png', 16, 16, 4);
     this.load.image('dirt_pile', 'assets/img/dirt_pile.png');
     this.load.image('game_bg', 'assets/img/game_bg.png');
     this.load.spritesheet('dirt', 'assets/img/dirt.png', 16, 16, 10);
