@@ -39,7 +39,7 @@ Preloader.prototype = {
     this.load.spritesheet('arrows', 'assets/img/arrows.png', 20, 20, 8);
     this.load.image('menu_background', 'assets/img/menu_background.jpg');
     this.load.spritesheet('play', 'assets/img/play.png', 200, 50, 2);
-    this.load.audio('titleMusic', ['assets/audio/main_menu.mp3']);
+    this.load.audio('titleMusic', ['assets/audio/intro.mp3']);
     this.load.audio('music', ['assets/audio/music.mp3']);
     this.load.bitmapFont('font', 'assets/fonts/font.png', 'assets/fonts/font.fnt');
     //  + lots of other required assets here
