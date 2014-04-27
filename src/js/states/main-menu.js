@@ -14,6 +14,7 @@ MainMenu.prototype = {
     //  Naturally I expect you to do something significantly better :)
 
     this.music = this.add.audio('titleMusic');
+    this.music.loop = true;
     this.music.volume = 0; // MUTE FOR NOW!!!
     this.music.play();
 

@@ -4,67 +4,177 @@ var _ = require("lodash");
 
 var tileSize = 16;
 
+var food = 100;
+
+var jobsNames = {
+  worker: "Worker",
+  architect: "Architect",
+  harvester: "Harvester",
+  aphidFarmer: "Aphid Farmer",
+  trophallaxis: "Trophallaxis Ant"
+};
+
+var pencilModeNames = {
+  dig: "Dig",
+  move: "Move",
+  build: "Build",
+  harvest: "Harvest"
+};
+
+var pencilModeShortKey = {
+  dig: Phaser.Keyboard.D,
+  move: Phaser.Keyboard.M,
+  build: Phaser.Keyboard.B,
+  harvest: Phaser.Keyboard.H
+};
+
+var TasksDefaultPriority = {
+  "cleanCorpse": -1
+};
+
+var FoodEnergy = {
+  "mushroom": 20,
+  "grain": 10
+};
+
+
+var simulationSpeedMsForDays = 0.0001;
+
+var currentPencilMode = "dig";
+
 var TasksEnergy = {
-  "dig": 10
+  "dig": 10,
+  "harvest": 10,
+  "cleanCorpse": 4
+};
+
+var TasksMaxWorkers = {
+  "dig": 2,
+  "harvester": 1,
+  "cleanCorpse": 1
 };
 
 var Ant = function (x, y, group, reverseX) {
+  this.game = group.game;
+  x *= tileSize;
+  y *= tileSize;
   var sprite = group.create(x, y, "ant", 0);
   sprite.animations.add("walk", [ 0, 1 ]);
   this.sprite = sprite;
   this.sprite.ant = this;
   this.route = null;
-  this.currentTask = null;
+  this.task = null;
   this.reverseX = reverseX||false;
+  this.bornTime = this.game.time.time;
 
-  sprite.animations.play('walk', 10, true);
+  this.sprite.health = 1;
 };
 
 Ant.prototype = {
-  availableForTask: function (task) {
-    return !this.currentTask;
+  die: function () {
+    this.sprite.kill();
   },
-  task: function (task, route, target) {
-    this.currentTask = task;
+  walk: function () {
+    this.sprite.animations.play('walk', 10, true);
+  },
+  busy: function () { // "simple" tasks are not busy
+    if (this.game.time.time-this.bornTime < 1000) return true;
+  },
+  isSpecializedFor: function (task) {
+    return false;
+  },
+  availableForTask: function (task, priority) {
+    return !this.task || priority > this.priority;
+  },
+  work: function (task, priority, route, target) {
+    this.task = task;
+    this.priority = priority;
     this.targetSprite = target;
-    this.route = route;
+    this.route = route; // FIXME should that be here?
   },
   stopTask: function () {
-    this.currentTask = null;
+    this.task = null;
     this.route = null;
-    this.targetSprite = null;
+  },
+  consumeAndDestroyTaskHandler: function (ctx) {
+    var task = this.task;
+    var sprite = this.task.target;
+    var alpha = Math.max(0, sprite.alpha - 0.001 * ctx.time.elapsed / TasksEnergy.dig);
+    sprite.alpha = alpha;
+    if (!alpha) {
+      sprite.kill();
+      this.stopTask();
+      ctx.removeTask(task);
+      return true;
+    }
   },
   taskUpdates: {
     dig: function (ctx) {
-      var task = this.currentTask;
-      var alpha = Math.max(0, this.targetSprite.alpha - 0.001 * ctx.time.elapsed / TasksEnergy.dig);
-      this.targetSprite.alpha = alpha;
-      if (!alpha) {
-        ctx.destroyDirt(this.currentTask.x, this.currentTask.y);
-        this.stopTask();
-        ctx.removeTask(task);
-      }
+      return this.consumeAndDestroyTaskHandler(ctx);
+    },
+    harvest: function (ctx) {
+      return this.consumeAndDestroyTaskHandler(ctx);
+    },
+    cleanCorpse: function (ctx) {
+      return this.consumeAndDestroyTaskHandler(ctx);
     }
   },
+  lookupForFood: function () {
+    // TODO this is done sync, no trip to look for food yet...
+    if (food > 0) {
+      var target = 1.2;
+      var take = Math.min(food, target - this.sprite.health);
+      this.sprite.health += take;
+      food -= take;
+    }
+  },
+  foodConsumption: function () {
+    return this.task ? 0.000015 : 0.00001;
+  },
+  moveSpeedFor: function (tile) {
+    return 0.1;
+  },
   update: function (ctx) {
+    this.sprite.damage(0.00001 * ctx.time.elapsed);
+    if (!this.task && this.sprite.health < 0.7) {
+      this.lookupForFood();
+    }
+    if (this.sprite.health < 0.5) {
+      this.lookupForFood();
+    }
+
     var scaleX = this.reverseX ? -1 : 1;
     if (scaleX !== this.sprite.scale.x) {
       this.sprite.pivot.x = this.reverseX ? this.sprite.width : 0;
       this.sprite.scale.x = scaleX;
     }
-    this.sprite.alpha = this.currentTask ? 0.5 : 1;
+    this.sprite.alpha = this.task ? 0.5 : 1;
     if (this.route && this.route.length) {
       // Walking
       var nextPosition = this.route[0];
+      var speed = this.moveSpeedFor(); // FIXME where is the tile?
       this.sprite.x = nextPosition.x * tileSize;
       this.sprite.y = nextPosition.y * tileSize;
       this.route.splice(0, 1);
     }
-    else if (this.currentTask) {
-      this.taskUpdates[this.currentTask.type].apply(this, arguments);
+    else if (this.task) {
+      var taskUpdate = this.taskUpdates[this.task.type];
+      if (taskUpdate) taskUpdate.apply(this, arguments);
     }
   }
 };
+
+var Queen = function () {
+  Ant.apply(this, arguments);
+  this.sprite.frame = 2;
+};
+
+Queen.prototype = Object.create(Ant.prototype);
+_.extend(Queen.prototype, {
+  busy: function () {
+    return true;
+  }
+});
 
 var Game = function (game) {
   // When a State is added to Phaser it automatically has the following properties set on it, 
@@ -94,19 +204,31 @@ module.exports = Game;
 
 Game.prototype = {
 
-  tileBitmap: function (x, y) {
-    var length = this.dirtBitmaps.length;
-    var i = (99999999 + x * 9 + x * y * 13) % length;
-    return this.dirtBitmaps[i] || this.dirtBitmaps[0];
+  setPencilMode: function (mode) {
+    currentPencilMode = mode;
   },
 
   create: function () {
-    this.minGridX = -40;
-    this.maxGridX = 40;
+    this.music = this.add.audio('music');
+    this.music.loop = true;
+    //this.music.volume = 0; // MUTE FOR NOW!!!
+    this.music.play();
+
+    this.minGridX = -50;
+    this.maxGridX = 50;
     this.minGridY = -30;
-    this.maxGridY = 100;
+    this.maxGridY = 80;
     this.gridW = this.maxGridX - this.minGridX;
     this.gridH = this.maxGridY - this.minGridY;
+
+    this.startTime = this.time.time;
+    this.lastBorn = this.time.time;
+    this.lastMushroom = this.time.time;
+    this.lastGrain = this.time.time;
+
+    this.bornRate = 10000;
+    this.mushroomRate = 1000;
+    this.grainRate = 5000;
 
     this.entrance = { x: 0, y: 0 };
     
@@ -116,23 +238,19 @@ Game.prototype = {
       this.gridW * tileSize,
       this.gridH * tileSize);
 
-    this.dirtBitmaps = [];
+    this.groundGrid = [];
+    this.tasks = [];
 
     this.directionKeys = this.game.input.keyboard.createCursorKeys();
 
-    var i;
+    _.map(pencilModeShortKey, function (keyCode, mode) {
+      var key = this.game.input.keyboard.addKey(keyCode);
+      key.onDown.add(function () {
+        this.setPencilMode(mode);
+      }, this);
+    }, this);
 
-    /*
-    for (i=0; i<9; ++i) {
-      var dirt = this.add.bitmapData(tileSize, tileSize);
-      var r = Math.round(200 + 20 * Math.random());
-      var g = Math.round(110 + 20 * Math.random());
-      var b = Math.round(80);
-      dirt.ctx.fillStyle = "rgb("+[r,g,b]+")";
-      dirt.ctx.fillRect(0, 0, tileSize, tileSize);
-      this.dirtBitmaps[i] = dirt;
-    }
-    */
+    var i;
 
     /*
     this.background = new Phaser.Group(
@@ -152,40 +270,46 @@ Game.prototype = {
       "ground"
     );
 
-    this.ants = new Phaser.Group(
-      this.game,
-      this.world,
-      "ants"
-    );
-
     this.taskGroup = new Phaser.Group(
       this.game,
       this.world,
       "task"
     );
 
-    for (i=0; i<30; ++i) {
-      this.createAnt(
-        this.rnd.integerInRange(this.minGridX, this.maxGridX) * tileSize,
-        0
-      );
-    }
+    this.objects = new Phaser.Group(
+      this.game,
+      this.world,
+      "objects"
+    );
 
-    this.groundGrid = [];
-
+    this.ants = new Phaser.Group(
+      this.game,
+      this.world,
+      "ants"
+    );
+    
     for (var xi = this.minGridX; xi < this.maxGridX; xi++) {
       for (var yi = this.minGridY; yi < this.maxGridY; yi++) {
         var tile;
         var x = xi * tileSize;
         var y = yi * tileSize;
-        i = this.gridIndex(xi, yi);
-        if (y > 0) {
-          if (Math.random() < 0.005) {
+        i = this.groundIndex(xi, yi);
+        if (y === 0) {
+          if (this.rnd.integerInRange(0, 4) === 0) {
+            this.createGrain(xi, yi);
+          }
+        }
+        else if (y > 0) {
+          if (this.rnd.integerInRange(0, 200) === 0) {
             tile = this.ground.create(x, y, "rock");
+          }
+          else if (this.rnd.integerInRange(0, 70) === 0) {
+            this.createMushroom(xi, yi);
+            tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
+            this.bindDirt(tile, xi, yi, i);
           }
           else {
             tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
-            tile.inputEnabled = true;
             this.bindDirt(tile, xi, yi, i);
           }
         }
@@ -193,9 +317,61 @@ Game.prototype = {
       }
     }
 
-    this.camera.focusOnXY(0, 0);
+    _.each([
+      [0, 1],
+      [0, 2],
+      [0, 3],
+      [0, 4]
+    ], function (p) {
+      var x = p[0], y = p[1];
+      this.replaceSprite(x, y, this.ground.create(x * tileSize, y * tileSize, "empty_ground"));
+    }, this);
 
-    this.tasks = [];
+    this.bornArea = _.filter([
+      [0, 6],
+      [-1, 5],
+      [0, 5],
+      [1, 5],
+      [-1, 6],
+      [1, 6]
+    ], function (p, i) {
+      var x = p[0], y = p[1];
+      this.replaceSprite(x, y, this.ground.create(x * tileSize, y * tileSize, "royal_room"));
+      this.createAnt(x, y, i===0 ? "queen" : null);
+      return i > 0;
+    }, this);
+
+    this.camera.focusOnXY(0, 0);
+  },
+  
+  createMushroom: function (x, y) {
+    if (arguments.length === 0) {
+      var i;
+      for (i=0; i<50; ++i) {
+        x = this.rnd.integerInRange(this.minGridX, this.maxGridX);
+        y = this.rnd.integerInRange(1, this.maxGridY);
+        var sprite = this.groundSprite(x, y);
+        if (!sprite || sprite.key === "empty_ground" || sprite.key === "dirt") {
+          break;
+        }
+      }
+      if (i === 50) return;
+    }
+    var tile = this.objects.create(x*tileSize, y*tileSize, "mushroom");
+    this.bindMushroom(tile, x, y);
+    this.lastMushroom = this.time.time;
+    return tile;
+  },
+
+  createGrain: function (x, y) {
+    if (arguments.length === 0) {
+      x = this.rnd.integerInRange(this.minGridX, this.maxGridX);
+      y = 0;
+    }
+    var tile = this.objects.create(x*tileSize, y*tileSize, "grain");
+    this.bindGrain(tile, x, y);
+    this.lastGrain = this.time.time;
+    return tile;
   },
 
   destroyDirt: function (x, y) {
@@ -220,11 +396,12 @@ Game.prototype = {
 
   isWalkable: function (x, y) {
     if (this.outOfGrid(x, y)) return false;
+    if (y < 0) return false;
     if (y === 0) return true;
-    var i = this.gridIndex(x, y);
+    var i = this.groundIndex(x, y);
     var tile = this.groundGrid[i];
     if (!tile) return false;
-    if (tile.key !== "empty_ground") return false;
+    if (tile.key === "rock" || tile.key === "dirt") return false;
     return true;
   },
 
@@ -289,16 +466,50 @@ Game.prototype = {
     ];
   },
 
-  bindDirt: function (tile, xi, yi, i) {
-    var self = this;
-    function dirtHandler (sprite, e) {
+  onTileSelected: function (tile, f, ctx) {
+    tile.inputEnabled = true;
+    function handler (sprite, e) {
       if (e.isDown) {
-        self.addTask("dig", xi, yi);
+        return f.apply(ctx, arguments);
       }
     }
-    tile.events.onInputDown.add(dirtHandler);
-    tile.events.onInputOver.add(dirtHandler);
-    tile.events.onInputUp.add(dirtHandler);
+    tile.events.onInputDown.add(handler);
+    tile.events.onInputOver.add(handler);
+    tile.events.onInputUp.add(handler);
+  },
+
+  bindGrain: function (tile, xi, yi) {
+    tile.events.onKilled.add(function () {
+      food += FoodEnergy[tile.key];
+    });
+    this.onTileSelected(tile, function (sprite, e) {
+      if (currentPencilMode === "harvest") {
+        this.addTask(tile, "harvest", xi, yi);
+      }
+    }, this);
+  },
+
+  bindMushroom: function (tile, xi, yi) {
+    tile.events.onKilled.add(function () {
+      food += FoodEnergy[tile.key];
+    });
+    this.onTileSelected(tile, function (sprite, e) {
+      if (currentPencilMode === "harvest") {
+        this.addTask(tile, "harvest", xi, yi);
+      }
+    }, this);
+  },
+
+  bindDirt: function (tile, xi, yi, i) {
+    tile.events.onKilled.add(function () {
+      var p = this.reversePosition(tile.x, tile.y);
+      this.destroyDirt(p[0], p[1]);
+    }, this);
+    this.onTileSelected(tile, function (sprite, e) {
+      if (currentPencilMode === "dig") {
+        this.addTask(tile, "dig", xi, yi);
+      }
+    }, this);
   },
 
   findTask: function (f) {
@@ -314,18 +525,28 @@ Game.prototype = {
     task.workers.forEach(function (worker) {
       worker.ant.stopTask();
     });
-    task.sprite.kill();
+    if (task.indicator) task.indicator.kill();
     this.tasks.splice(i, 1);
   },
 
-  addTask: function (type, x, y) {
+  addTask: function (sprite, type, x, y, invisibleTask) {
     // FIXME: also add a sprite with it, which will hold the "progress" status
     var task = this.findTask(function (task) {
-      return task.x === x && task.y === y && task.type === type;
+      return sprite === task.target;
     });
     if (task) return null;
-    task = { type: type, x: x, y: y, workers: [], maxWorkers: 2 };
-    task.sprite = this.taskGroup.create(x * tileSize, y * tileSize, "task", 0);
+    task = {
+      target: sprite,
+      type: type,
+      x: x,
+      y: y,
+      workers: [],
+      maxWorkers: TasksMaxWorkers[type]||1,
+      priority: TasksDefaultPriority[type]||1
+    };
+    if (!invisibleTask) {
+      task.indicator = this.taskGroup.create(x * tileSize, y * tileSize, "task", 0);
+    }
     this.tasks.push(task);
     return task;
   },
@@ -334,27 +555,42 @@ Game.prototype = {
     return x < this.minGridX || x >= this.maxGridX || y < this.minGridY || y >= this.maxGridY;
   },
 
-  gridIndex: function (x, y) {
+  groundIndex: function (x, y) {
     return x + y * this.gridW;
   },
 
-  gridSprite: function (x, y) {
-    return this.groundGrid[this.gridIndex(x, y)];
+  groundSprite: function (x, y) {
+    return this.groundGrid[this.groundIndex(x, y)];
   },
 
   replaceSprite: function (x, y, sprite) {
-    var old = this.groundGrid[this.gridIndex(x,y)];
+    var old = this.groundGrid[this.groundIndex(x,y)];
     this.ground.replace(old, sprite);
-    this.groundGrid[this.gridIndex(x,y)] = sprite;
+    this.groundGrid[this.groundIndex(x,y)] = sprite;
     old.kill();
   },
 
-  createAnt: function (x, y) {
-    new Ant(x, y, this.ants, Math.random() < 0.5);
+  createAnt: function (x, y, type) {
+    if (type === "queen") {
+      return new Queen(x, y, this.ants);
+    }
+    else {
+      var ant = new Ant(x, y, this.ants);
+      ant.sprite.events.onKilled.add(function () {
+        var corpse = this.objects.create(ant.sprite.x, ant.sprite.y, "ant_corpse");
+        var p = this.reversePosition(corpse.x, corpse.y);
+        this.addTask(corpse, "cleanCorpse", p[0], p[1], true);
+      }, this);
+      return ant;
+    }
   },
 
   removeAnt: function (ant) {
     ant.kill();
+    _.each(this.tasks, function (t) {
+      var i = t.workers.inderOf(ant);
+      if (i!==-1) t.workers.splice(i, 1);
+    });
   },
 
   moveCamWithMouse: function () {
@@ -379,57 +615,83 @@ Game.prototype = {
     );
   },
 
-  findWorkers: function (task) {
-    var allSuitable = [];
-    this.ants.forEachAlive(function (ant) {
-      if (ant.ant.availableForTask(task)) {
-        allSuitable.push(ant);
-      }
-    });
-    var x = task.x * tileSize;
-    var y = task.y * tileSize;
-    allSuitable.sort(function (a, b) {
-      var dxa = a.x - x;
-      var dya = a.y - y;
-      var dxb = b.x - x;
-      var dyb = b.y - y;
-      return dxa*dxa+dya*dya > dxb*dxb+dyb*dyb ? 1 : -1;
-    });
-    return allSuitable;
+  getPriority: function (worker, task) {
+    return worker.ant.isSpecializedFor(task) ? 99+task.priority : task.priority;
+  },
+
+  findTasks: function (worker, tasks) {
+    if (!tasks) tasks = this.tasks;
+    var p = this.reversePosition(worker.x, worker.y);
+    var x = p[0], y = p[1];
+    return _.chain(tasks)
+      .filter(function (task) {
+        var priority = this.getPriority(worker, task);
+        return worker.ant.availableForTask(task, priority);
+      }, this)
+      .sort(_.bind(function (a, b) {
+        var dxa = a.x - x;
+        var dya = a.y - y;
+        var dxb = b.x - x;
+        var dyb = b.y - y;
+        var pa = this.getPriority(worker, a);
+        var pb = this.getPriority(worker, b);
+        if (pa > pb) return -1;
+        return dxa*dxa+dya*dya > dxb*dxb+dyb*dyb ? 1 : -1;
+      }, this))
+      .value();
   },
 
   update: function () {
+    var y = 0;
+    this.game.debug.text("days: "+Math.round((this.time.time-this.startTime) * simulationSpeedMsForDays), 20, y+=20, 'white');
+    this.game.debug.text("ants: "+this.ants.countLiving(), 20, y+=20, 'white');
+    this.game.debug.text("food: "+Math.round(food), 20, y+=20, 'white');
+    this.game.debug.text("mode: "+pencilModeNames[currentPencilMode], 20, y+=20, 'white');
     // this.game.debug.cameraInfo(this.camera, 20, 20, 'white');
     // this.moveCamWithMouse();
     this.moveCamWithKeyboard();
 
-    this.tasks.forEach(function (task) {
-      if (task.workers.length < task.maxWorkers) {
-        if (this.ways(task.x, task.y).length) { // Accessible
-          var workers = this.findWorkers(task);
-          var remaining = task.maxWorkers - task.workers.length;
-          _.find(workers, function (worker) {
-            if (remaining <= 0) return true;
-            var p = this.reversePosition(worker.x, worker.y);
-            var path = this.shortestPathBetween(p[0], p[1], task.x, task.y);
-            if (path) {
-              remaining --;
-              worker.ant.task(task, path.path, this.gridSprite(task.x, task.y));
-              task.workers.push(worker);
-            }
-          }, this);
-        }
-      }
-      else {
-        if (!task.sprite.startTime) {
-          task.sprite.startTime = this.time.time;
-        }
-        task.sprite.alpha = 0.5+0.5*Math.cos((this.time.time-task.sprite.startTime) / 200);
-      }
-    }, this);
+    if (this.time.time - this.lastMushroom > this.mushroomRate) {
+      this.createMushroom();
+    }
+    if (this.time.time - this.lastGrain > this.grainRate) {
+      this.createGrain();
+    }
 
-    this.ants.forEachAlive(function (ant) {
-      ant.ant.update(this);
+    if (this.time.time - this.lastBorn > this.bornRate) {
+      var p = _.sample(this.bornArea);
+      this.createAnt(p[0], p[1]);
+      this.lastBorn = this.time.time;
+    }
+
+    var awaitingTasks = _.filter(this.tasks, function (task) {
+      return task.workers.length < task.maxWorkers &&
+             this.ways(task.x, task.y).length;
+    }, this);
+    
+    this.ants.forEachAlive(function (worker) {
+      if (!worker.ant.busy()) {
+        var tasks = this.findTasks(worker, awaitingTasks);
+        var task = tasks[0];
+        if (task) {
+          var p = this.reversePosition(worker.x, worker.y);
+          var path = this.shortestPathBetween(p[0], p[1], task.x, task.y);
+          if (path) {
+            worker.ant.work(task, 1, path.path);
+            task.workers.push(worker);
+            if (task.workers.length >= task.maxWorkers) {
+              var i = awaitingTasks.indexOf(task);
+              awaitingTasks.splice(i, 1);
+            }
+          }
+        }
+      }
+      /*
+      else {
+        // FIXME: find something else to do depending on the speciality?
+      }
+      */
+      worker.ant.update(this);
     }, this);
   },
 

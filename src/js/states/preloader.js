@@ -23,15 +23,22 @@ Preloader.prototype = {
 
     //  Here we load the rest of the assets our game needs.
     //  As this is just a Project Template I've not provided these assets, swap them for your own.
-    this.load.spritesheet('ant', 'assets/img/ant.png', 16, 16, 2);
+    this.load.spritesheet('ant', 'assets/img/ant.png', 16, 16, 4);
+    this.load.image('ant_corpse', 'assets/img/ant_corpse.png');
     this.load.image('empty_ground', 'assets/img/empty_ground.png');
     this.load.image('task', 'assets/img/task.png');
     this.load.image('rock', 'assets/img/rock.png');
+    this.load.image('aphid', 'assets/img/aphid.png');
+    this.load.image('royal_room', 'assets/img/royal_room.png');
+    this.load.image('food_stock', 'assets/img/food_stock.png');
+    this.load.image('grain', 'assets/img/grain.png');
+    this.load.image('mushroom', 'assets/img/mushroom.png');
     this.load.image('game_bg', 'assets/img/game_bg.png');
     this.load.spritesheet('dirt', 'assets/img/dirt.png', 16, 16, 10);
     this.load.image('titlepage', 'assets/img/title.png');
     this.load.image('playButton', 'assets/img/play.png');
     this.load.audio('titleMusic', ['assets/audio/main_menu.mp3']);
+    this.load.audio('music', ['assets/audio/music.mp3']);
     this.load.bitmapFont('font', 'assets/fonts/font.png', 'assets/fonts/font.fnt');
     //  + lots of other required assets here
   },
@@ -51,7 +58,7 @@ Preloader.prototype = {
     //  If you don't have any music in your game then put the game.state.start line into the create function and delete
     //  the update function completely.
 
-    if (this.cache.isSoundDecoded('titleMusic') && this.ready === false) {
+    if (this.cache.isSoundDecoded('music') && this.cache.isSoundDecoded('titleMusic') && this.ready === false) {
       this.ready = true;
       this.game.state.start('MainMenu');
     }
