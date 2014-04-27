@@ -2,7 +2,7 @@
 'use strict';
 var Phaser = require('Phaser');
 
-var DURATION = 1;
+var DURATION = 2000;
 
 var Splash = function (game) {
   this.logo = null;

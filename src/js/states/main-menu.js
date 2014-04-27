@@ -15,14 +15,11 @@ MainMenu.prototype = {
 
     this.music = this.add.audio('titleMusic');
     this.music.loop = true;
-    this.music.volume = 0; // MUTE FOR NOW!!!
     this.music.play();
 
-    this.add.sprite(0, 0, 'titlepage');
+    this.add.sprite(0, 0, 'menu_background');
 
-    this.playButton = this.add.button(200, 400, 'playButton', this.startGame, this, 'buttonOver', 'buttonOut', 'buttonOver');
-
-    this.startGame(); // REMOVE LATER
+    this.playButton = this.add.button(300, 240, 'play', this.startGame, this, 1, 0);
   },
 
   update: function () {

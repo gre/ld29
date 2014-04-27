@@ -293,7 +293,6 @@ Game.prototype = {
   create: function () {
     this.music = this.add.audio('music');
     this.music.loop = true;
-    this.music.volume = 0; // MUTE FOR NOW!!!
     this.music.play();
 
     this.minGridX = -50;

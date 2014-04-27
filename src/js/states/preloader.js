@@ -14,7 +14,7 @@ Preloader.prototype = {
     // These are the assets we loaded in Boot.js
     // A nice sparkly background and a loading progress bar
     this.background = this.add.sprite(0, 0, 'preloaderBackground');
-    this.preloadBar = this.add.sprite(300, 400, 'preloaderBar');
+    this.preloadBar = this.add.sprite(200, 400, 'preloaderBar');
 
     //  This sets the preloadBar sprite as a loader sprite.
     //  What that does is automatically crop the sprite from 0 to full-width
@@ -37,8 +37,8 @@ Preloader.prototype = {
     this.load.image('game_bg', 'assets/img/game_bg.png');
     this.load.spritesheet('dirt', 'assets/img/dirt.png', 16, 16, 10);
     this.load.spritesheet('arrows', 'assets/img/arrows.png', 20, 20, 8);
-    this.load.image('titlepage', 'assets/img/title.png');
-    this.load.image('playButton', 'assets/img/play.png');
+    this.load.image('menu_background', 'assets/img/menu_background.jpg');
+    this.load.spritesheet('play', 'assets/img/play.png', 200, 50, 2);
     this.load.audio('titleMusic', ['assets/audio/main_menu.mp3']);
     this.load.audio('music', ['assets/audio/music.mp3']);
     this.load.bitmapFont('font', 'assets/fonts/font.png', 'assets/fonts/font.fnt');
