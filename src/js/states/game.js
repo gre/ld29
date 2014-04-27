@@ -4,14 +4,24 @@ var _ = require("lodash");
 
 var tileSize = 16;
 
-var food = 100;
+var food = 40;
+
+function step (value, min, max) {
+  return min+(max-min)*Math.max(0, Math.min(1, value));
+}
+
+var jobs = {
+  worker: 0,
+  architect: 0,
+  harvester: 0
+};
 
 var jobsNames = {
   worker: "Worker",
   architect: "Architect",
-  harvester: "Harvester",
+  harvester: "Harvester"/*,
   aphidFarmer: "Aphid Farmer",
-  trophallaxis: "Trophallaxis Ant"
+  trophallaxis: "Trophallaxis"*/
 };
 
 var pencilModeNames = {
@@ -19,6 +29,16 @@ var pencilModeNames = {
   move: "Move",
   build: "Build",
   harvest: "Harvest"
+};
+
+var JobTask = [
+  [ "harvester", "harvest" ],
+  [ "architect", "dig" ]
+];
+
+var TaskNeedSpecialization = {
+  "harvest": true,
+  "dig": true
 };
 
 var pencilModeShortKey = {
@@ -29,33 +49,37 @@ var pencilModeShortKey = {
 };
 
 var TasksDefaultPriority = {
-  "cleanCorpse": -1
+  "cleanCorpse": -1,
+  "cleanDirt": -1
 };
 
 var FoodEnergy = {
-  "mushroom": 20,
-  "grain": 10
+  "mushroom": 10,
+  "grain": 4
 };
 
-
 var simulationSpeedMsForDays = 0.0001;
-
 var currentPencilMode = "dig";
 
 var TasksEnergy = {
   "dig": 10,
   "harvest": 10,
-  "cleanCorpse": 4
+  "cleanCorpse": 4,
+  "cleanDirt": 4
 };
 
 var TasksMaxWorkers = {
-  "dig": 2,
+  "dig": 3,
   "harvester": 1,
-  "cleanCorpse": 1
+  "cleanCorpse": 1,
+  "cleanDirt": 1
 };
 
-var Ant = function (x, y, group, reverseX) {
+var AntIncr = 0;
+var Ant = function (ctx, x, y, group, reverseX) {
+  this.id = ++AntIncr;
   this.game = group.game;
+  this.job = "worker";
   x *= tileSize;
   y *= tileSize;
   var sprite = group.create(x, y, "ant", 0);
@@ -66,35 +90,71 @@ var Ant = function (x, y, group, reverseX) {
   this.task = null;
   this.reverseX = reverseX||false;
   this.bornTime = this.game.time.time;
+  this.lastMove = this.game.time.time;
+
+  this.moveSpeedFor = _.bind(ctx.moveSpeedFor, ctx);
+  this.resolveRoute = _.bind(ctx.resolveRouteAnt, ctx, this);
+
+  this.prevPosition = { x: x, y: y };
 
   this.sprite.health = 1;
+  this.randomlyOffset();
 };
 
 Ant.prototype = {
+  setJob: function (job) {
+    this.job = job;
+  },
   die: function () {
     this.sprite.kill();
-  },
-  walk: function () {
-    this.sprite.animations.play('walk', 10, true);
   },
   busy: function () { // "simple" tasks are not busy
     if (this.game.time.time-this.bornTime < 1000) return true;
   },
   isSpecializedFor: function (task) {
-    return false;
+    return _.any(JobTask, function (tuple) {
+      return tuple[0] === this.job && tuple[1] === task.type;
+    }, this);
   },
   availableForTask: function (task, priority) {
-    return !this.task || priority > this.priority;
+    if (this.task && priority <= this.priority) return false;
+    if (TaskNeedSpecialization[task.type]) return this.isSpecializedFor(task);
+    return true;
   },
-  work: function (task, priority, route, target) {
+  toString: function () {
+    return "[Ant "+this.id+" "+this.job+"]";
+  },
+  work: function (task, priority) {
+    if (this.task) {
+      this.stopTask();
+    }
     this.task = task;
     this.priority = priority;
-    this.targetSprite = target;
-    this.route = route; // FIXME should that be here?
+    this.route = this.resolveRoute(task.x, task.y);
+    if (this.route && this.route.length) {
+      this.routeStart();
+    }
+    this.lastMove = this.game.time.time;
+    console.log(this+" new work:", task, priority);
+  },
+  routeStart: function () {
+    this.sprite.rotation = 0;
+    this.sprite.animations.play('walk', 10, true);
+  },
+  routeEnd: function () {
+    this.sprite.animations.stop('walk');
+    this.randomlyOffset();
+  },
+  randomlyOffset: function () {
+    this.sprite.rotation = this.game.rnd.normal() * 0.1;
   },
   stopTask: function () {
+    if (!this.task) return;
+    var i = this.task.workers.indexOf(this);
+    if (i !== -1) this.task.workers.splice(i, 1);
     this.task = null;
     this.route = null;
+    this.priority = -Infinity;
   },
   consumeAndDestroyTaskHandler: function (ctx) {
     var task = this.task;
@@ -115,6 +175,9 @@ Ant.prototype = {
     harvest: function (ctx) {
       return this.consumeAndDestroyTaskHandler(ctx);
     },
+    cleanDirt: function (ctx) {
+      return this.consumeAndDestroyTaskHandler(ctx);
+    },
     cleanCorpse: function (ctx) {
       return this.consumeAndDestroyTaskHandler(ctx);
     }
@@ -122,44 +185,62 @@ Ant.prototype = {
   lookupForFood: function () {
     // TODO this is done sync, no trip to look for food yet...
     if (food > 0) {
-      var target = 1.2;
+      var target = 0.8 + 0.6 * Math.random();
       var take = Math.min(food, target - this.sprite.health);
       this.sprite.health += take;
       food -= take;
+      console.log(this+" eat food "+take);
     }
   },
   foodConsumption: function () {
-    return this.task ? 0.000015 : 0.00001;
-  },
-  moveSpeedFor: function (tile) {
-    return 0.1;
+    return 0.001 * (this.task ? 0.1 : 0.08);
   },
   update: function (ctx) {
-    this.sprite.damage(0.00001 * ctx.time.elapsed);
-    if (!this.task && this.sprite.health < 0.7) {
+    if (!this.task && this.sprite.health < 0.5) {
       this.lookupForFood();
     }
-    if (this.sprite.health < 0.5) {
+    else if (this.sprite.health < 0.3) {
       this.lookupForFood();
     }
-
-    var scaleX = this.reverseX ? -1 : 1;
-    if (scaleX !== this.sprite.scale.x) {
-      this.sprite.pivot.x = this.reverseX ? this.sprite.width : 0;
-      this.sprite.scale.x = scaleX;
-    }
-    this.sprite.alpha = this.task ? 0.5 : 1;
+    this.sprite.damage(this.foodConsumption() * ctx.time.elapsed);
     if (this.route && this.route.length) {
       // Walking
-      var nextPosition = this.route[0];
-      var speed = this.moveSpeedFor(); // FIXME where is the tile?
-      this.sprite.x = nextPosition.x * tileSize;
-      this.sprite.y = nextPosition.y * tileSize;
-      this.route.splice(0, 1);
+      var relativeNextPosition = this.route[0];
+      var nextPosition = { x: tileSize*relativeNextPosition.x, y: tileSize*relativeNextPosition.y };
+
+      var speed = ctx.time.elapsed * this.moveSpeedFor(this.sprite); // FIXME where is the tile?
+      this.sprite.x = step(speed*(ctx.time.time-this.lastMove), this.prevPosition.x, nextPosition.x);
+      this.sprite.y = step(speed*(ctx.time.time-this.lastMove), this.prevPosition.y, nextPosition.y);
+
+      if (this.prevPosition.x < nextPosition.x) {
+        this.reverseX = false;
+      }
+      else if (this.prevPosition.x > nextPosition.x) {
+        this.reverseX = true;
+      }
+
+      if (this.sprite.x === nextPosition.x && this.sprite.y === nextPosition.y) {
+        this.sprite.x = nextPosition.x;
+        this.sprite.y = nextPosition.y;
+        this.prevPosition = nextPosition;
+        this.route.splice(0, 1);
+        this.lastMove = ctx.time.time;
+        if (!this.route.length) {
+          this.route = null;
+          this.routeEnd();
+        }
+      }
     }
     else if (this.task) {
       var taskUpdate = this.taskUpdates[this.task.type];
       if (taskUpdate) taskUpdate.apply(this, arguments);
+    }
+
+    this.sprite.alpha = this.task ? 0.8 : 0.9;
+    var scaleX = this.reverseX ? -1 : 1;
+    if (scaleX !== this.sprite.scale.x) {
+      this.sprite.pivot.x = this.reverseX ? this.sprite.width : 0;
+      this.sprite.scale.x = scaleX;
     }
   }
 };
@@ -167,6 +248,7 @@ Ant.prototype = {
 var Queen = function () {
   Ant.apply(this, arguments);
   this.sprite.frame = 2;
+  this.job = "queen";
 };
 
 Queen.prototype = Object.create(Ant.prototype);
@@ -211,7 +293,7 @@ Game.prototype = {
   create: function () {
     this.music = this.add.audio('music');
     this.music.loop = true;
-    //this.music.volume = 0; // MUTE FOR NOW!!!
+    this.music.volume = 0; // MUTE FOR NOW!!!
     this.music.play();
 
     this.minGridX = -50;
@@ -226,9 +308,9 @@ Game.prototype = {
     this.lastMushroom = this.time.time;
     this.lastGrain = this.time.time;
 
-    this.bornRate = 10000;
+    this.bornRate = 8000;
     this.mushroomRate = 1000;
-    this.grainRate = 5000;
+    this.grainRate = 10000;
 
     this.entrance = { x: 0, y: 0 };
     
@@ -243,26 +325,73 @@ Game.prototype = {
 
     this.directionKeys = this.game.input.keyboard.createCursorKeys();
 
+    /*
     _.map(pencilModeShortKey, function (keyCode, mode) {
       var key = this.game.input.keyboard.addKey(keyCode);
       key.onDown.add(function () {
         this.setPencilMode(mode);
       }, this);
     }, this);
+    */
 
     var i;
 
-    /*
-    this.background = new Phaser.Group(
+    this.ui = new Phaser.Group(
       this.game,
       this.stage,
-      "background"
+      "ui"
     );
 
-    this.background.create(0, -100, "game_bg");
-    */
+    
 
-    this.stage.setBackgroundColor(0x9fcbe5);
+    function jobHandler (id, incr) {
+      return function () {
+        if (incr > 0 && jobs.worker <= 0) return;
+        if (incr < 0 && jobs[id] <= 0) return;
+        var to = incr > 0 ? id : "worker";
+        var from = incr > 0 ? "worker" : id;
+        var worker = null;
+        this.ants.forEachAlive(function (w) {
+          if (worker) return;
+          if (w.ant.job === from) {
+            worker = w;
+          }
+        });
+        if (!worker) {
+          console.log("counts are out of sync...", from, "->", to);
+          return;
+        }
+        worker.ant.setJob(to);
+        jobs.worker -= incr;
+        jobs[id] += incr;
+        this.counts[id].text = ''+jobs[id];
+        this.counts.worker.text = ''+jobs.worker;
+      };
+    }
+
+    i = 0;
+    this.counts = {};
+    _.each(jobsNames, function (job, id) {
+      var textw = 80;
+      var x = this.game.width - textw - 20;
+      var y = 20 + i * 40;
+      this.ui.add(new Phaser.Button(this.game, x-5, y-8-5, 'arrows', jobHandler(id, 1), this, 0, 2, 4, 6));
+      this.ui.add(new Phaser.Button(this.game, x-5, y+18-5, 'arrows', jobHandler(id, -1), this, 1, 3, 5, 7));
+      var text = new Phaser.Text(this.game, x+20, y, job, { align: 'right', font: '12pt bold Arial', wordWrapWidth: textw, wordWrap: true });
+      this.ui.add(text);
+      var count = new Phaser.Text(this.game, x+3, y+4, "0", { font: '9pt bold monospace' });
+      this.ui.add(count);
+      i++;
+      this.counts[id] = count;
+    }, this);
+
+    this.background = new Phaser.Group(
+      this.game,
+      this.world,
+      "background"
+    );
+    for (i = this.minGridX; i < this.maxGridX; i ++)
+      this.background.create(i * tileSize, this.minGridY * tileSize, "game_bg");
 
     this.ground = new Phaser.Group(
       this.game,
@@ -300,10 +429,10 @@ Game.prototype = {
           }
         }
         else if (y > 0) {
-          if (this.rnd.integerInRange(0, 200) === 0) {
+          if (this.rnd.integerInRange(0, 90) === 0) {
             tile = this.ground.create(x, y, "rock");
           }
-          else if (this.rnd.integerInRange(0, 70) === 0) {
+          else if (this.rnd.integerInRange(0, 50) === 0) {
             this.createMushroom(xi, yi);
             tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
             this.bindDirt(tile, xi, yi, i);
@@ -324,7 +453,7 @@ Game.prototype = {
       [0, 4]
     ], function (p) {
       var x = p[0], y = p[1];
-      this.replaceSprite(x, y, this.ground.create(x * tileSize, y * tileSize, "empty_ground"));
+      this.groundSprite(x, y).kill();
     }, this);
 
     this.bornArea = _.filter([
@@ -336,12 +465,37 @@ Game.prototype = {
       [1, 6]
     ], function (p, i) {
       var x = p[0], y = p[1];
-      this.replaceSprite(x, y, this.ground.create(x * tileSize, y * tileSize, "royal_room"));
-      this.createAnt(x, y, i===0 ? "queen" : null);
+      this.groundSprite(x, y).kill();
+      tile = this.ground.create(x*tileSize, y*tileSize, "royal_room");
+      if (i === 0) {
+        this.queen = this.createAnt(x, y, i===0 ? "queen" : null);
+      }
       return i > 0;
     }, this);
 
+    this.objects.forEachAlive(function (o) {
+      if (o.key === "dirt_pile") {
+        o.kill();
+      }
+    });
+
     this.camera.focusOnXY(0, 0);
+
+    this.syncWorkersJobCount();
+  },
+
+  syncWorkersJobCount: function () {
+    var sum = 0;
+    this.ants.forEachAlive(function (worker) {
+      if (worker.ant.job === "worker")
+        sum ++;
+    }, this);
+    jobs.worker = sum;
+    this.counts.worker.text = ''+sum;
+  },
+
+  moveSpeedFor: function (worker) {
+    return 0.0003;
   },
   
   createMushroom: function (x, y) {
@@ -374,10 +528,6 @@ Game.prototype = {
     return tile;
   },
 
-  destroyDirt: function (x, y) {
-    this.replaceSprite(x, y, this.ground.create(x * tileSize, y * tileSize, "empty_ground"));
-  },
-
   ways: function (x, y, filterExtension) {
     var self = this;
     var filter = function (p) {
@@ -400,7 +550,7 @@ Game.prototype = {
     if (y === 0) return true;
     var i = this.groundIndex(x, y);
     var tile = this.groundGrid[i];
-    if (!tile) return false;
+    if (!tile) return true;
     if (tile.key === "rock" || tile.key === "dirt") return false;
     return true;
   },
@@ -482,28 +632,35 @@ Game.prototype = {
     tile.events.onKilled.add(function () {
       food += FoodEnergy[tile.key];
     });
+    this.addTask(tile, "harvest", xi, yi, true);
+    /*
     this.onTileSelected(tile, function (sprite, e) {
       if (currentPencilMode === "harvest") {
         this.addTask(tile, "harvest", xi, yi);
       }
     }, this);
+    */
   },
 
   bindMushroom: function (tile, xi, yi) {
     tile.events.onKilled.add(function () {
       food += FoodEnergy[tile.key];
     });
+    this.addTask(tile, "harvest", xi, yi, true);
+    /*
     this.onTileSelected(tile, function (sprite, e) {
       if (currentPencilMode === "harvest") {
         this.addTask(tile, "harvest", xi, yi);
       }
     }, this);
+    */
   },
 
   bindDirt: function (tile, xi, yi, i) {
     tile.events.onKilled.add(function () {
-      var p = this.reversePosition(tile.x, tile.y);
-      this.destroyDirt(p[0], p[1]);
+      delete this.groundGrid[i];
+      var dirt = this.objects.create(tile.x, tile.y, "dirt_pile");
+      this.addTask(dirt, "cleanDirt", xi, yi, true);
     }, this);
     this.onTileSelected(tile, function (sprite, e) {
       if (currentPencilMode === "dig") {
@@ -571,18 +728,22 @@ Game.prototype = {
   },
 
   createAnt: function (x, y, type) {
+    var ant;
     if (type === "queen") {
-      return new Queen(x, y, this.ants);
+      ant = new Queen(this, x, y, this.ants);
     }
     else {
-      var ant = new Ant(x, y, this.ants);
+      ant = new Ant(this, x, y, this.ants);
       ant.sprite.events.onKilled.add(function () {
+        jobs[ant.job] --;
+        this.counts[ant.job].text = ''+jobs[ant.job];
         var corpse = this.objects.create(ant.sprite.x, ant.sprite.y, "ant_corpse");
         var p = this.reversePosition(corpse.x, corpse.y);
         this.addTask(corpse, "cleanCorpse", p[0], p[1], true);
       }, this);
-      return ant;
     }
+    this.syncWorkersJobCount();
+    return ant;
   },
 
   removeAnt: function (ant) {
@@ -641,12 +802,18 @@ Game.prototype = {
       .value();
   },
 
+  resolveRouteAnt: function (ant, x, y) {
+    var p = this.reversePosition(ant.sprite.x, ant.sprite.y);
+    var path = this.shortestPathBetween(p[0], p[1], x, y);
+    return path.path;
+  },
+
   update: function () {
     var y = 0;
     this.game.debug.text("days: "+Math.round((this.time.time-this.startTime) * simulationSpeedMsForDays), 20, y+=20, 'white');
     this.game.debug.text("ants: "+this.ants.countLiving(), 20, y+=20, 'white');
     this.game.debug.text("food: "+Math.round(food), 20, y+=20, 'white');
-    this.game.debug.text("mode: "+pencilModeNames[currentPencilMode], 20, y+=20, 'white');
+    // this.game.debug.text("mode: "+pencilModeNames[currentPencilMode], 20, y+=20, 'white');
     // this.game.debug.cameraInfo(this.camera, 20, 20, 'white');
     // this.moveCamWithMouse();
     this.moveCamWithKeyboard();
@@ -658,7 +825,7 @@ Game.prototype = {
       this.createGrain();
     }
 
-    if (this.time.time - this.lastBorn > this.bornRate) {
+    if (this.queen.sprite.alive && this.time.time - this.lastBorn > this.bornRate) {
       var p = _.sample(this.bornArea);
       this.createAnt(p[0], p[1]);
       this.lastBorn = this.time.time;
@@ -668,16 +835,16 @@ Game.prototype = {
       return task.workers.length < task.maxWorkers &&
              this.ways(task.x, task.y).length;
     }, this);
-    
+
     this.ants.forEachAlive(function (worker) {
       if (!worker.ant.busy()) {
         var tasks = this.findTasks(worker, awaitingTasks);
         var task = tasks[0];
         if (task) {
           var p = this.reversePosition(worker.x, worker.y);
-          var path = this.shortestPathBetween(p[0], p[1], task.x, task.y);
+          var path = this.shortestPathBetween(p[0], p[1], task.x, task.y); // FIXME: this shoult be done in the findTasks instead
           if (path) {
-            worker.ant.work(task, 1, path.path);
+            worker.ant.work(task, this.getPriority(worker, task));
             task.workers.push(worker);
             if (task.workers.length >= task.maxWorkers) {
               var i = awaitingTasks.indexOf(task);

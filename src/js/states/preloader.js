@@ -33,8 +33,10 @@ Preloader.prototype = {
     this.load.image('food_stock', 'assets/img/food_stock.png');
     this.load.image('grain', 'assets/img/grain.png');
     this.load.image('mushroom', 'assets/img/mushroom.png');
+    this.load.image('dirt_pile', 'assets/img/dirt_pile.png');
     this.load.image('game_bg', 'assets/img/game_bg.png');
     this.load.spritesheet('dirt', 'assets/img/dirt.png', 16, 16, 10);
+    this.load.spritesheet('arrows', 'assets/img/arrows.png', 20, 20, 8);
     this.load.image('titlepage', 'assets/img/title.png');
     this.load.image('playButton', 'assets/img/play.png');
     this.load.audio('titleMusic', ['assets/audio/main_menu.mp3']);
