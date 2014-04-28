@@ -892,7 +892,7 @@ Game.prototype = {
     this.ui.add(new Phaser.Text(this.game, 200, 120, "You survived "+days+" days.", { align: 'right', font: '20pt bold Arial', wordWrapWidth: 300, wordWrap: true }));
     this.ui.add(new Phaser.Button(this.game, 200, 160, "retry", function () {
       console.log("RETRY");
-      location.href = "/?autoplay=1";
+      location.href = "./?autoplay=1";
     }, this));
   },
 
