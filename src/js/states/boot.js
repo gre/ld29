@@ -1,6 +1,7 @@
 'use strict';
 
 var Phaser = require('Phaser'),
+    query = require("../query"),
   Boot = function (game) {};
 
 module.exports = Boot;
@@ -39,7 +40,12 @@ Boot.prototype = {
 
     // By this point the preloader assets have loaded to the cache, we've set the game settings
     // So now let's start the real preloader going
-    this.game.state.start('Splash');
+    if (query.autoplay) {
+      this.game.state.start('Preloader');
+    }
+    else {
+      this.game.state.start('Splash');
+    }
   }
 
 };

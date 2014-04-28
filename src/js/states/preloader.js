@@ -1,5 +1,7 @@
 'use strict';
 
+var query = require("../query");
+
 var Preloader = function (game) {
   this.background = null;
   this.preloadBar = null;
@@ -36,6 +38,7 @@ Preloader.prototype = {
     this.load.spritesheet('mushroom', 'assets/img/mushroom.png', 16, 16, 4);
     this.load.image('dirt_pile', 'assets/img/dirt_pile.png');
     this.load.image('game_bg', 'assets/img/game_bg.png');
+    this.load.image('retry', 'assets/img/retry.png');
     this.load.spritesheet('dirt', 'assets/img/dirt.png', 16, 16, 10);
     this.load.spritesheet('arrows', 'assets/img/arrows.png', 20, 20, 8);
     this.load.image('menu_background', 'assets/img/menu_background.jpg');
@@ -63,7 +66,12 @@ Preloader.prototype = {
 
     if (this.cache.isSoundDecoded('music') && this.cache.isSoundDecoded('titleMusic') && this.ready === false) {
       this.ready = true;
-      this.game.state.start('MainMenu');
+      if (query.autoplay) {
+        this.game.state.start('Game');
+      }
+      else {
+        this.game.state.start('MainMenu');
+      }
     }
   }
 

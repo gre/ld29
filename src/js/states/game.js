@@ -97,7 +97,7 @@ var Ant = function (ctx, x, y, group, reverseX) {
 
   this.prevPosition = { x: x, y: y };
 
-  this.sprite.health = 1;
+  this.sprite.health = 2;
   this.randomlyOffset();
 };
 
@@ -185,7 +185,7 @@ Ant.prototype = {
   lookupForFood: function () {
     // TODO this is done sync, no trip to look for food yet...
     if (food > 0) {
-      var target = 0.8 + 0.6 * Math.random();
+      var target = 0.8 + 0.6 * Math.random() + (this.job === "queen" ? 1 : 0);
       var take = Math.min(food, target - this.sprite.health);
       this.sprite.health += take;
       food -= take;
@@ -196,7 +196,10 @@ Ant.prototype = {
     return 0.001 * (this.task ? 0.1 : 0.08);
   },
   update: function (ctx) {
-    if (!this.task && this.sprite.health < 0.5) {
+    if (this.job === "queen" && this.sprite.health < 0.8) {
+      this.lookupForFood();
+    }
+    else if (!this.task && this.sprite.health < 0.5) {
       this.lookupForFood();
     }
     else if (this.sprite.health < 0.3) {
@@ -825,8 +828,14 @@ Game.prototype = {
   },
 
   update: function () {
+    if (this.gameOvered) return;
     var y = 0;
-    this.game.debug.text("days: "+Math.round((this.time.time-this.startTime) * simulationSpeedMsForDays), 20, y+=20, 'white');
+    var days = Math.round((this.time.time-this.startTime) * simulationSpeedMsForDays);
+    if (this.ants.countLiving() === 0) {
+      return this.gameOver(days);
+    }
+
+    this.game.debug.text("days: "+days, 20, y+=20, 'white');
     this.game.debug.text("ants: "+this.ants.countLiving(), 20, y+=20, 'white');
     this.game.debug.text("food: "+Math.round(food), 20, y+=20, 'white');
     // this.game.debug.text("mode: "+pencilModeNames[currentPencilMode], 20, y+=20, 'white');
@@ -876,6 +885,15 @@ Game.prototype = {
       */
       worker.ant.update(this);
     }, this);
+  },
+
+  gameOver: function (days) {
+    this.gameOvered = true;
+    this.ui.add(new Phaser.Text(this.game, 200, 120, "You survived "+days+" days.", { align: 'right', font: '20pt bold Arial', wordWrapWidth: 300, wordWrap: true }));
+    this.ui.add(new Phaser.Button(this.game, 200, 160, "retry", function () {
+      console.log("RETRY");
+      location.href = "/?autoplay=1";
+    }, this));
   },
 
   quitGame: function (pointer) {

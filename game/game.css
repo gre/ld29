@@ -3,6 +3,13 @@ body {
   color: #fff;
   text-align: center;
 }
+a {
+  color: #fff;
+}
 .main {
   display: inline-block;
+}
+
+footer {
+  margin-top: 20px;
 }
