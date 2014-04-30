@@ -1,10 +1,12 @@
 'use strict';
 var Phaser = require('Phaser');
 var _ = require("lodash");
+var PF = require("pathfinding");
+var perlin = require('perlin-noise');
 
 var tileSize = 16;
 
-var food = 40;
+var food = 50;
 
 function step (value, min, max) {
   return min+(max-min)*Math.max(0, Math.min(1, value));
@@ -62,7 +64,7 @@ var simulationSpeedMsForDays = 0.0001;
 var currentPencilMode = "dig";
 
 var TasksEnergy = {
-  "dig": 10,
+  "dig": 9,
   "harvest": 10,
   "cleanCorpse": 4,
   "cleanDirt": 4
@@ -103,6 +105,7 @@ var Ant = function (ctx, x, y, group, reverseX) {
 
 Ant.prototype = {
   setJob: function (job) {
+    this.stopTask();
     this.job = job;
   },
   die: function () {
@@ -185,7 +188,7 @@ Ant.prototype = {
   lookupForFood: function () {
     // TODO this is done sync, no trip to look for food yet...
     if (food > 0) {
-      var target = 0.8 + 0.6 * Math.random() + (this.job === "queen" ? 1 : 0);
+      var target = 1 + 0.6 * Math.random() + (this.job === "queen" ? 2 : 0);
       var take = Math.min(food, target - this.sprite.health);
       this.sprite.health += take;
       food -= take;
@@ -196,13 +199,13 @@ Ant.prototype = {
     return 0.001 * (this.task ? 0.1 : 0.08);
   },
   update: function (ctx) {
-    if (this.job === "queen" && this.sprite.health < 0.8) {
+    if (this.job === "queen" && this.sprite.health < 2) {
       this.lookupForFood();
     }
-    else if (!this.task && this.sprite.health < 0.5) {
+    else if (!this.task && this.sprite.health < 1) {
       this.lookupForFood();
     }
-    else if (this.sprite.health < 0.3) {
+    else if (this.sprite.health < 0.5) {
       this.lookupForFood();
     }
     this.sprite.damage(this.foodConsumption() * ctx.time.elapsed);
@@ -310,8 +313,8 @@ Game.prototype = {
     this.lastMushroom = this.time.time;
     this.lastGrain = this.time.time;
 
-    this.bornRate = 8000;
-    this.mushroomRate = 1000;
+    this.bornRate = 4000;
+    this.mushroomRate = 2000;
     this.grainRate = 10000;
 
     this.entrance = { x: 0, y: 0 };
@@ -326,6 +329,7 @@ Game.prototype = {
     this.tasks = [];
 
     this.directionKeys = this.game.input.keyboard.createCursorKeys();
+
 
     /*
     _.map(pencilModeShortKey, function (keyCode, mode) {
@@ -367,6 +371,19 @@ Game.prototype = {
         this.counts[id].text = ''+jobs[id];
         this.counts.worker.text = ''+jobs.worker;
       };
+    }
+
+    var self = this;
+    function bindKeys() {
+      _.map([
+        { key: Phaser.Keyboard.I, job: "architect", incr: 1 },
+        { key: Phaser.Keyboard.K, job: "architect", incr: -1 },
+        { key: Phaser.Keyboard.O, job: "harvester", incr: 1 },
+        { key: Phaser.Keyboard.L, job: "harvester", incr: -1 }
+      ], function (o) {
+        var key = this.game.input.keyboard.addKey(o.key);
+        key.onDown.add(jobHandler(o.job, o.incr), this);
+      }, self);
     }
 
     i = 0;
@@ -427,29 +444,41 @@ Game.prototype = {
 
     this.cursor = this.uiInline.create(0, 0, "cursor");
     this.cursor.visible = false;
-    
-    for (var xi = this.minGridX; xi < this.maxGridX; xi++) {
-      for (var yi = this.minGridY; yi < this.maxGridY; yi++) {
+
+    var noise = perlin.generatePerlinNoise(this.gridW, this.gridH, {
+      octaveCount: 3,
+      amplitude: 0.1,
+      persistence: 0.2
+    });
+
+    i = 0;
+    for (var yi = this.minGridY; yi < this.maxGridY; yi++) {
+      for (var xi = this.minGridX; xi < this.maxGridX; xi++) {
+        var r = noise[i++];
+        var dirtClr = Math.floor(9 * (1.5*r+0.5*Math.random()) / 2);
         var tile;
         var x = xi * tileSize;
         var y = yi * tileSize;
         i = this.groundIndex(xi, yi);
         if (y === 0) {
-          if (this.rnd.integerInRange(0, 4) === 0) {
+          if (this.rnd.integerInRange(0, 3) === 0) {
             this.createGrain(xi, yi);
+          }
+          else if (this.rnd.integerInRange(0, 9) === 0) {
+            this.createMushroom(xi, yi);
           }
         }
         else if (y > 0) {
-          if (this.rnd.integerInRange(0, 90) === 0) {
+          if (0.82 < r && r < 0.92) {
             tile = this.ground.create(x, y, "rock");
           }
-          else if (this.rnd.integerInRange(0, 50) === 0) {
+          else if (r < 0.15 + 0.35 * (yi / this.gridH)) {
             this.createMushroom(xi, yi);
-            tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
+            tile = this.ground.create(x, y, "dirt", dirtClr);
             this.bindDirt(tile, xi, yi, i);
           }
           else {
-            tile = this.ground.create(x, y, "dirt", this.rnd.integerInRange(0, 9));
+            tile = this.ground.create(x, y, "dirt", dirtClr);
             this.bindDirt(tile, xi, yi, i);
           }
         }
@@ -479,7 +508,7 @@ Game.prototype = {
       this.groundSprite(x, y).kill();
       tile = this.ground.create(x*tileSize, y*tileSize, "royal_room");
       if (i <= 2) {
-        this.queen = this.createAnt(x, y, i===0 ? "queen" : null);
+        this.queen = this.createAnt(x, y, i===0 ? "queen" : null, x < 0);
       }
       return i > 0;
     }, this);
@@ -490,9 +519,22 @@ Game.prototype = {
       }
     });
 
+    this.walkableMatrix = this.generateWalkableMatrix();
+
     this.camera.focusOnXY(0, 0);
 
     this.syncWorkersJobCount();
+
+    var game = this.game;
+    this.time.timeCap = 100;
+    window.addEventListener("blur", function () {
+      game.paused = true;
+    }, false);
+    window.addEventListener("focus", function () {
+      game.paused = false;
+      bindKeys();
+    }, false);
+    bindKeys();
   },
 
   syncWorkersJobCount: function () {
@@ -514,7 +556,7 @@ Game.prototype = {
       var i;
       for (i=0; i<50; ++i) {
         x = this.rnd.integerInRange(this.minGridX, this.maxGridX);
-        y = this.rnd.integerInRange(1, this.maxGridY);
+        y = this.rnd.integerInRange(0, this.maxGridY);
         var sprite = this.groundSprite(x, y);
         if (!sprite || sprite.key === "empty_ground" || sprite.key === "dirt") {
           break;
@@ -555,6 +597,19 @@ Game.prototype = {
     ], filterExtension(filter));
   },
 
+  generateWalkableMatrix: function () {
+    var m = new Array(this.gridH);
+    var s=[];
+    for (var yi = this.minGridY, y = 0; yi < this.maxGridY; yi++, y++) {
+      var line = m[y] = new Array(this.gridW);
+      for (var xi = this.minGridX, x = 0; xi < this.maxGridX; xi++, x++) {
+        line[x] = this.isWalkable(xi, yi) ? 0 : 1;
+        if (yi && !line[x]) s.push([xi+","+yi]);
+      }
+    }
+    return m;
+  },
+
   isWalkable: function (x, y) {
     if (this.outOfGrid(x, y)) return false;
     if (y < 0) return false;
@@ -567,56 +622,25 @@ Game.prototype = {
 
   // A* algorithm here...
   shortestPathBetween: function (ax, ay, goalx, goaly, includingDestination) {
-    var self = this;
-
-    function positionInHistory (x, y, history) {
-      return _.any(history, function (p) {
-        return p.x === x && p.y === y;
-      });
+    if (!includingDestination) {
+      this.setWalkableMatrixValue(goalx, goaly, 0);
     }
 
-    function next (x, y, history) {
-      return self.ways(x, y, function (f) {
-        return function (p) {
-          if (positionInHistory(p.x, p.y, history)) return false;
-          if (!includingDestination && goalx === p.x && goaly === p.y) return true;
-          return f(p);
-        };
-      });
+    var grid = new PF.Grid(this.gridW, this.gridH, this.walkableMatrix);
+    var finder = new PF.AStarFinder();
+    var path = finder.findPath(ax-this.minGridX, ay-this.minGridY, goalx-this.minGridX, goaly-this.minGridY, grid);
+
+    if (!includingDestination) {
+      this.touchWalkableMatrixValue(goalx, goaly);
     }
 
-    function explore (paths, goals, i) {
-      if (paths.length === 0) {
-        return goals;
-      }
-      if (i >= 99999) {
-        console.log("Path was way too long!");
-        return goals;
-      }
-      var all = [];
-      paths.forEach(function (path) {
-        var latest = path.path[path.path.length-1];
-        var ways = next(latest.x, latest.y, path.path);
-        ways.forEach(function (way) {
-          var p = {
-            cost: path.cost + 1, // FIXME, way may have different costs
-            path: path.path.concat([ way ])
-          };
-          if (goals.length > 0 && goals[0].cost < p.cost)
-            return; // We previously found a better goal!
-
-          if (way.x === goalx && way.y === goaly) {
-            goals[0] = p;
-          }
-          else {
-            all.push(p);
-          }
-        });
-      });
-      return explore(all, goals, i+1);
-    }
-
-    return explore([{ cost: 0, path: [{ x: ax, y: ay }] }], [], 0)[0];
+    if (!path.length)
+      return null;
+    else
+      return _.map(PF.Util.expandPath(path), function (v) {
+        return { x: v[0]+this.minGridX, y: v[1]+this.minGridY };
+      }, this);
+    
   },
 
   reversePosition: function (x, y) {
@@ -629,6 +653,7 @@ Game.prototype = {
   onTileSelected: function (tile, f, ctx) {
     var cursor = this.cursor;
     tile.inputEnabled = true;
+    tile.input.priorityID = -1; // tile are less prioritized
     function handler (sprite, e) {
       if (cursor) {
         cursor.visible = true;
@@ -675,6 +700,7 @@ Game.prototype = {
   bindDirt: function (tile, xi, yi, i) {
     tile.events.onKilled.add(function () {
       delete this.groundGrid[i];
+      this.touchWalkableMatrixValue(xi, yi);
       /*
       // THIS cause bugs, no time to investigate for this minor feature
       var dirt = this.objects.create(tile.x, tile.y, "dirt_pile");
@@ -739,28 +765,43 @@ Game.prototype = {
     return this.groundGrid[this.groundIndex(x, y)];
   },
 
+  getWalkableMatrixValue: function (x, y) {
+    return this.walkableMatrix[y-this.minGridY][x-this.minGridX];
+  },
+
+  setWalkableMatrixValue: function (x, y, v) {
+    this.walkableMatrix[y-this.minGridY][x-this.minGridX] = v;
+  },
+
+  touchWalkableMatrixValue: function (x, y) {
+    if (this.walkableMatrix) this.setWalkableMatrixValue(x, y, this.isWalkable(x, y) ? 0 : 1);
+  },
+
   replaceSprite: function (x, y, sprite) {
     var old = this.groundGrid[this.groundIndex(x,y)];
     this.ground.replace(old, sprite);
     this.groundGrid[this.groundIndex(x,y)] = sprite;
     old.kill();
+    this.touchWalkableMatrixValue(x, y);
   },
 
-  createAnt: function (x, y, type) {
+  createAnt: function (x, y, type, xreverse) {
     var ant;
     if (type === "queen") {
       ant = new Queen(this, x, y, this.ants);
     }
     else {
-      ant = new Ant(this, x, y, this.ants);
+      ant = new Ant(this, x, y, this.ants, xreverse);
       ant.sprite.events.onKilled.add(function () {
         jobs[ant.job] --;
         this.counts[ant.job].text = ''+jobs[ant.job];
-        var corpse = this.objects.create(ant.sprite.x, ant.sprite.y, "ant_corpse");
-        var p = this.reversePosition(corpse.x, corpse.y);
-        this.addTask(corpse, "cleanCorpse", p[0], p[1], true);
       }, this);
     }
+    ant.sprite.events.onKilled.add(function () {
+      var corpse = this.objects.create(ant.sprite.x, ant.sprite.y, "ant_corpse");
+      var p = this.reversePosition(corpse.x, corpse.y);
+      this.addTask(corpse, "cleanCorpse", p[0], p[1], true);
+    }, this);
     this.syncWorkersJobCount();
     return ant;
   },
@@ -823,14 +864,16 @@ Game.prototype = {
 
   resolveRouteAnt: function (ant, x, y) {
     var p = this.reversePosition(ant.sprite.x, ant.sprite.y);
-    var path = this.shortestPathBetween(p[0], p[1], x, y);
-    return path.path;
+    return this.shortestPathBetween(p[0], p[1], x, y);
   },
 
   update: function () {
+    // this.moveCamWithMouse();
+    this.moveCamWithKeyboard();
+
     if (this.gameOvered) return;
     var y = 0;
-    var days = Math.round((this.time.time-this.startTime) * simulationSpeedMsForDays);
+    var days = Math.round((this.time.time - this.startTime - this.time.pausedTime) * simulationSpeedMsForDays);
     if (this.ants.countLiving() === 0) {
       return this.gameOver(days);
     }
@@ -840,8 +883,6 @@ Game.prototype = {
     this.game.debug.text("food: "+Math.round(food), 20, y+=20, 'white');
     // this.game.debug.text("mode: "+pencilModeNames[currentPencilMode], 20, y+=20, 'white');
     // this.game.debug.cameraInfo(this.camera, 20, 20, 'white');
-    // this.moveCamWithMouse();
-    this.moveCamWithKeyboard();
 
     if (this.time.time - this.lastMushroom > this.mushroomRate) {
       this.createMushroom();
@@ -862,7 +903,8 @@ Game.prototype = {
     }, this);
 
     this.ants.forEachAlive(function (worker) {
-      if (!worker.ant.busy()) {
+      if (!worker.ant.busy() && (!worker._lastSearch || this.time.time-worker._lastSearch > 500)) {
+        worker._lastSearch = this.time.time;
         var tasks = this.findTasks(worker, awaitingTasks);
         var task = tasks[0];
         if (task) {
