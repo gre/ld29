@@ -392,9 +392,12 @@ Game.prototype = {
       var textw = 80;
       var x = this.game.width - textw - 20;
       var y = 20 + i * 40;
+      var plus, minus;
       if (id !== "worker") {
-        this.ui.add(new Phaser.Button(this.game, x-5, y-8-5, 'arrows', jobHandler(id, 1), this, 0, 2, 4, 6));
-        this.ui.add(new Phaser.Button(this.game, x-5, y+18-5, 'arrows', jobHandler(id, -1), this, 1, 3, 5, 7));
+        this.ui.add(plus = new Phaser.Button(this.game, x-5, y-8-5, 'arrows', jobHandler(id, 1), this, 0, 2, 4, 6));
+        this.ui.add(minus = new Phaser.Button(this.game, x-5, y+18-5, 'arrows', jobHandler(id, -1), this, 1, 3, 5, 7));
+        plus.input.priorityID = 2;
+        minus.input.priorityID = 2;
       }
       var text = new Phaser.Text(this.game, x+20, y, job, { align: 'right', font: '12pt bold Arial', wordWrapWidth: textw, wordWrap: true });
       this.ui.add(text);
@@ -653,7 +656,7 @@ Game.prototype = {
   onTileSelected: function (tile, f, ctx) {
     var cursor = this.cursor;
     tile.inputEnabled = true;
-    tile.input.priorityID = -1; // tile are less prioritized
+    tile.input.priorityID = 1; // tile are less prioritized
     function handler (sprite, e) {
       if (cursor) {
         cursor.visible = true;
