@@ -3,6 +3,7 @@ var Phaser = require('Phaser');
 var _ = require("lodash");
 var PF = require("pathfinding");
 var perlin = require('perlin-noise');
+var query = require("../query");
 
 var tileSize = 16;
 
@@ -138,7 +139,7 @@ Ant.prototype = {
       this.routeStart();
     }
     this.lastMove = this.game.time.time;
-    console.log(this+" new work:", task, priority);
+    // console.log(this+" new work:", task, priority);
   },
   routeStart: function () {
     this.sprite.rotation = 0;
@@ -192,7 +193,7 @@ Ant.prototype = {
       var take = Math.min(food, target - this.sprite.health);
       this.sprite.health += take;
       food -= take;
-      console.log(this+" eat food "+take);
+      // console.log(this+" eat food "+take);
     }
   },
   foodConsumption: function () {
@@ -297,6 +298,9 @@ Game.prototype = {
   },
 
   create: function () {
+    if (query.debug) {
+      this.time.advancedTiming = true;
+    }
     this.music = this.add.audio('music');
     this.music.loop = true;
     this.music.play();
@@ -347,6 +351,15 @@ Game.prototype = {
       this.stage,
       "ui"
     );
+
+    var statsStyle = { align: 'right', fill: 'white', font: '12pt Courier' };
+    this.daysText = new Phaser.Text(this.game, 10, 10, "", statsStyle);
+    this.antsText = new Phaser.Text(this.game, 10, 30, "", statsStyle);
+    this.foodText = new Phaser.Text(this.game, 10, 50, "", statsStyle);
+
+    this.ui.add(this.daysText);
+    this.ui.add(this.antsText);
+    this.ui.add(this.foodText);
 
     function jobHandler (id, incr) {
       return function () {
@@ -881,9 +894,20 @@ Game.prototype = {
       return this.gameOver(days);
     }
 
+    if (query.debug) {
+      this.game.debug.text("fps: "+this.time.fps, 730, 590, "white");
+    }
+
+    /*
     this.game.debug.text("days: "+days, 20, y+=20, 'white');
     this.game.debug.text("ants: "+this.ants.countLiving(), 20, y+=20, 'white');
     this.game.debug.text("food: "+Math.round(food), 20, y+=20, 'white');
+    */
+
+    this.daysText.text = "days: "+days;
+    this.antsText.text = "ants: "+this.ants.countLiving();
+    this.foodText.text = "food: "+Math.round(food);
+
     // this.game.debug.text("mode: "+pencilModeNames[currentPencilMode], 20, y+=20, 'white');
     // this.game.debug.cameraInfo(this.camera, 20, 20, 'white');
 
